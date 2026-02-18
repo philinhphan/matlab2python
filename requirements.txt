@@ -1,0 +1,8 @@
+pydantic-ai[openai]>=0.0.30
+openai>=1.50.0
+scipy>=1.13.0
+numpy>=1.26.0
+matplotlib>=3.9.0
+tqdm>=4.66.0
+pyflakes>=3.2.0
+python-dotenv>=1.0.0
