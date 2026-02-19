@@ -17,6 +17,9 @@ env/
 # Environment / secrets
 .env
 
+# BMW CA certificate (downloaded at runtime)
+BMW_Trusted_Certificates_Latest.pem
+
 # Output directories
 output/
 output_simple/
