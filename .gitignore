@@ -20,6 +20,9 @@ env/
 # BMW CA certificate (downloaded at runtime)
 BMW_Trusted_Certificates_Latest.pem
 
+# Jaeger binaries (large; download separately from https://www.jaegertracing.io/download/)
+jaeger-*/
+
 # Output directories
 output/
 output_simple/
