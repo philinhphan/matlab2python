@@ -1,4 +1,6 @@
 pydantic-ai[openai]>=0.0.30
+logfire[openai,pydantic-ai]>=2.0.0
+opentelemetry-exporter-otlp-proto-http>=1.25.0
 openai>=1.50.0
 scipy>=1.13.0
 numpy>=1.26.0

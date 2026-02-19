@@ -12,6 +12,7 @@ from pydantic_ai.providers.openai import OpenAIProvider
 
 from converter.agent import create_agent
 from converter.context import ConversionContext
+from converter.logging_config import configure_logfire
 from converter.prompts import AGENT_TASK_PROMPT_TEMPLATE
 
 
@@ -101,6 +102,7 @@ Examples:
 
     model_name = args.model.removeprefix("openai:")
     client = AsyncOpenAI(max_retries=5)
+    configure_logfire(service_name="matlab2python", openai_client=client)
     provider = OpenAIProvider(openai_client=client)
     agent = create_agent(model=model_name, provider=provider)
 
