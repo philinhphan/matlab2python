@@ -15,6 +15,9 @@ from converter.context import ConversionContext
 from converter.logging_config import configure_logfire
 from converter.prompts import AGENT_TASK_PROMPT_TEMPLATE
 
+_OPENAI_DEFAULT_MODEL = "gpt-4o-mini"
+_BMW_DEFAULT_MODEL = "openai/gpt-4o"
+
 
 async def main() -> None:
     load_dotenv()
@@ -35,6 +38,12 @@ Examples:
 
   # Use a different model
   python main.py testfiles/ --model gpt-4o-mini
+
+  # Use BMW LLM API (reads credentials from .env)
+  python main.py testfiles/ --provider bmw
+
+  # Use BMW API with a specific model
+  python main.py testfiles/ --provider bmw --model anthropic/claude-3-7-sonnet
 
   # Allow more revision attempts
   python main.py testfiles/ --max-revisions 8
@@ -61,9 +70,18 @@ Examples:
         help="Specific .m files to convert (default: all .m files in input_dir)",
     )
     parser.add_argument(
+        "--provider",
+        choices=["openai", "bmw"],
+        default="openai",
+        help="LLM provider to use: 'openai' (default) or 'bmw'",
+    )
+    parser.add_argument(
         "--model",
-        default="gpt-4o-mini",
-        help="OpenAI model to use (default: gpt-4o-mini)",
+        default=None,
+        help=(
+            f"Model to use. OpenAI default: {_OPENAI_DEFAULT_MODEL!r}. "
+            f"BMW default: {_BMW_DEFAULT_MODEL!r}."
+        ),
     )
     parser.add_argument(
         "--max-revisions",
@@ -83,9 +101,18 @@ Examples:
     output_dir = output_dir.resolve()
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    print(f"Input:  {input_dir}")
-    print(f"Output: {output_dir}")
-    print(f"Model:  {args.model}")
+    # Resolve model default per provider
+    if args.model is not None:
+        model_arg = args.model
+    elif args.provider == "bmw":
+        model_arg = _BMW_DEFAULT_MODEL
+    else:
+        model_arg = _OPENAI_DEFAULT_MODEL
+
+    print(f"Input:    {input_dir}")
+    print(f"Output:   {output_dir}")
+    print(f"Provider: {args.provider}")
+    print(f"Model:    {model_arg}")
     print(f"Max revisions: {args.max_revisions}")
     if args.files:
         print(f"Files:  {', '.join(args.files)}")
@@ -100,8 +127,21 @@ Examples:
         max_revision_attempts=args.max_revisions,
     )
 
-    model_name = args.model.removeprefix("openai:")
-    client = AsyncOpenAI(max_retries=5)
+    if args.provider == "bmw":
+        import os
+        from converter.bmw_auth import create_bmw_openai_client
+        client = create_bmw_openai_client(
+            api_key=os.environ["LLM_API_PROD_KEY"],
+            client_id=os.environ["CLIENT_ID"],
+            client_secret=os.environ["CLIENT_SECRET"],
+            cached_token=os.environ.get("LLM_ACCESS_TOKEN"),
+            cached_token_exp=os.environ.get("LLM_ACCESS_TOKEN_EXP"),
+        )
+        model_name = model_arg  # e.g. "openai/gpt-4o" — no prefix stripping needed
+    else:
+        client = AsyncOpenAI(max_retries=5)
+        model_name = model_arg.removeprefix("openai:")
+
     configure_logfire(service_name="matlab2python", openai_client=client)
     provider = OpenAIProvider(openai_client=client)
     agent = create_agent(model=model_name, provider=provider)
