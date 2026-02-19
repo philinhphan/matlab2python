@@ -28,3 +28,7 @@ output_simple/
 .idea/
 .vscode/
 *.swp
+
+
+
+.claude/
