@@ -89,6 +89,11 @@ Examples:
         default=5,
         help="Maximum revision attempts per file (default: 5)",
     )
+    parser.add_argument(
+        "--trace",
+        action="store_true",
+        help="Enable OpenTelemetry tracing (requires Jaeger on localhost:4318)",
+    )
     args = parser.parse_args()
 
     input_dir = args.input_dir.resolve()
@@ -142,7 +147,8 @@ Examples:
         client = AsyncOpenAI(max_retries=5)
         model_name = model_arg.removeprefix("openai:")
 
-    configure_logfire(service_name="matlab2python", openai_client=client)
+    if args.trace:
+        configure_logfire(service_name="matlab2python", openai_client=client)
     provider = OpenAIProvider(openai_client=client)
     agent = create_agent(model=model_name, provider=provider)
 
