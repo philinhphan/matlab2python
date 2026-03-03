@@ -33,6 +33,7 @@ from converter.tools.validation_tools import (
     validate_imports,
     validate_python_syntax,
 )
+from converter.tools.execution_tools import execute_python_file
 
 _CONTEXT_TOOLS = [
     list_matlab_files,
@@ -49,6 +50,7 @@ _CONTEXT_TOOLS = [
     check_numpy_indexing,
     validate_imports,
     annotate_error_in_source,
+    execute_python_file,
 ]
 
 _PLAIN_TOOLS = [

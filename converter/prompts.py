@@ -32,8 +32,15 @@ For each file in dependency order:
 3. Call `run_pyflakes` — fix undefined names and unused imports, rewrite if needed.
 4. Call `check_numpy_indexing` — review each flagged line, fix arithmetic indexing errors, rewrite.
 5. Call `validate_imports` — verify all imports are present.
-6. After passing validation: call `record_conversion_note` for any stubs or warnings.
-7. Maximum `max_revision_attempts` revisions; if exceeded, write best version with `# VALIDATION FAILED:` comment at top.
+6. Once all static checks pass, call `execute_python_file` to run the script.
+   - Success (return_code 0): file is validated, proceed to the next file.
+   - `expected_error` in result: note it with `record_conversion_note` and proceed. Do NOT retry.
+   - Timeout: record note, do NOT retry.
+   - Other runtime errors: call `annotate_error_in_source` with the traceback, fix the code,
+     call `write_python_file`, then call `execute_python_file` again on ONLY this file.
+   - If the tool says "max execution attempts reached", stop retrying and proceed.
+7. After passing validation: call `record_conversion_note` for any stubs or warnings.
+8. Maximum `max_revision_attempts` revisions; if exceeded, write best version with `# VALIDATION FAILED:` comment at top.
 
 ### Phase 3: Cross-File Integration
 1. Check that function calls across files use consistent Python names.
@@ -524,7 +531,12 @@ For each .m file discovered:
 6. Call run_pyflakes — fix undefined names and unused imports, rewrite if needed.
 7. Call check_numpy_indexing — fix arithmetic indexing errors, rewrite if needed.
 8. Repeat steps 5-7 within {max_attempts} total attempts.
-9. Call record_conversion_note for any stubs or warnings.
+9. Once static checks pass, call execute_python_file on THIS file only.
+   - If result has "expected_error" or "timed_out": call record_conversion_note and move on.
+   - If it fails with a runtime error: fix the code, rewrite, re-run static checks (steps 5-7)
+     and execute_python_file again — but ONLY on the file you just fixed, NOT all files.
+   - Do NOT re-execute files that already passed.
+10. Call record_conversion_note for any stubs or warnings.
 
 Every .m file MUST result in a write_python_file call. Do NOT skip any file.
 

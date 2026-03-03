@@ -9,6 +9,7 @@ from pathlib import Path
 from openai import AsyncOpenAI
 from dotenv import load_dotenv
 from pydantic_ai.providers.openai import OpenAIProvider
+from pydantic_ai.usage import UsageLimits
 
 from converter.agent import create_agent
 from converter.context import ConversionContext
@@ -162,7 +163,12 @@ Examples:
     print("Starting conversion agent...\n")
     print("=" * 60)
 
-    result = await agent.run(prompt, deps=ctx)
+    file_count = max(len(ctx.target_files), 5)
+    result = await agent.run(
+        prompt,
+        deps=ctx,
+        usage_limits=UsageLimits(request_limit=25 * file_count),
+    )
 
     print("=" * 60)
     print("\nAgent output:")

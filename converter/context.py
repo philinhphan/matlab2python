@@ -12,6 +12,7 @@ class ConversionContext:
     converted_files: dict[str, str] = field(default_factory=dict)  # py_filename → current code
     conversion_errors: dict[str, list[str]] = field(default_factory=dict)
     revision_history: dict[str, list[str]] = field(default_factory=dict)
+    execution_attempts: dict[str, int] = field(default_factory=dict)  # py_filename → execution count
     known_functions: dict[str, dict] = field(default_factory=dict) # MATLAB fn → {args, returns, file}
     dependency_graph: dict[str, list[str]] = field(default_factory=dict)
     requirements: set[str] = field(default_factory=set)

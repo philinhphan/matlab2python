@@ -59,6 +59,8 @@ async def write_python_file(
     Appends to revision_history and updates converted_files cache.
     Returns confirmation message with output path.
     """
+    # Strip directory components — the LLM sometimes includes the output dir in the filename
+    python_filename = Path(python_filename).name
     output_path = ctx.deps.output_dir / python_filename
     output_path.write_text(content, encoding="utf-8")
 
@@ -80,6 +82,9 @@ async def read_converted_file(
 
     Used during revision cycles to inspect the current state.
     """
+    # Strip directory components — the LLM sometimes includes the output dir in the filename
+    python_filename = Path(python_filename).name
+
     # Check in-memory cache first
     if python_filename in ctx.deps.converted_files:
         return ctx.deps.converted_files[python_filename]
