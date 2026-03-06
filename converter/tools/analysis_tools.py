@@ -26,6 +26,7 @@ _POLAR_PLOT_RE = re.compile(r"\bpolar\s*\(")
 _SUBTIGHTPLOT_RE = re.compile(r"\bsubtightplot\s*\(")
 _INTERP1_RE = re.compile(r"\binterp1\s*\(")
 _ASSIGNIN_RE = re.compile(r"\bassignin\s*\(")
+_ADDPATH_RE = re.compile(r"\baddpath\s*\(")
 _PYENV_RE = re.compile(r"\bpyenv\b|\bpyrunfile\b|\bpy\.\w+")
 _CELL_ARRAY_RE = re.compile(r"\{|\}")
 _1BASED_ARITHMETIC_RE = re.compile(
@@ -103,6 +104,7 @@ async def analyze_matlab_patterns(
         "function_definitions": function_defs,
         "called_functions": sorted(called_functions),
         "line_count": len(source.splitlines()),
+        "has_addpath": bool(_ADDPATH_RE.search(clean)),
         "has_german_comments": bool(
             re.search(r"[äöüÄÖÜß]", source)
         ),

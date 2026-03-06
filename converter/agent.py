@@ -14,6 +14,7 @@ from converter.tools.analysis_tools import (
     extract_function_signatures,
 )
 from converter.tools.file_tools import (
+    get_error_lessons,
     list_matlab_files,
     read_converted_file,
     read_matlab_file,
@@ -42,6 +43,7 @@ _CONTEXT_TOOLS = [
     read_converted_file,
     write_requirements_txt,
     record_conversion_note,
+    get_error_lessons,
     analyze_matlab_patterns,
     extract_function_signatures,
     build_dependency_graph,
@@ -61,7 +63,7 @@ _PLAIN_TOOLS = [
 
 
 def create_agent(
-    model: str = "gpt-4o-mini",
+    model: str = "gpt-5-mini",
     provider: OpenAIProvider | None = None,
 ) -> Agent[ConversionContext, str]:
     """Create and return the conversion agent with all tools registered.

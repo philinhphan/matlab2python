@@ -10,18 +10,21 @@ from converter.context import ConversionContext
 
 
 async def list_matlab_files(ctx: RunContext[ConversionContext]) -> list[str]:
-    """List all .m files in the input directory (excluding .asv backup files).
+    """List all .m files in the input directory tree (excluding .asv backup files).
 
-    If target_files is set on the context, returns only those files.
+    Recursively scans subdirectories so multi-directory MATLAB projects are
+    fully discovered.  Returns paths relative to input_dir (e.g.
+    ``"subdir/func.m"``).  If target_files is set on the context, returns only
+    those files.
     """
     input_dir = ctx.deps.input_dir
     if ctx.deps.target_files:
         return ctx.deps.target_files
 
     files = sorted(
-        p.name
-        for p in input_dir.iterdir()
-        if p.suffix == ".m" and not p.name.endswith(".asv")
+        str(p.relative_to(input_dir))
+        for p in input_dir.rglob("*.m")
+        if not p.name.endswith(".asv")
     )
     return files
 
@@ -58,12 +61,23 @@ async def write_python_file(
 
     Appends to revision_history and updates converted_files cache.
     Returns confirmation message with output path.
+    Refuses to write after max_revision_attempts to prevent infinite loops.
     """
     # Strip directory components — the LLM sometimes includes the output dir in the filename
     python_filename = Path(python_filename).name
     output_path = ctx.deps.output_dir / python_filename
-    output_path.write_text(content, encoding="utf-8")
 
+    # Enforce revision limit
+    revision_count = len(ctx.deps.revision_history.get(python_filename, []))
+    max_revisions = ctx.deps.max_revision_attempts
+    if revision_count >= max_revisions:
+        return (
+            f"STOP: '{python_filename}' has already been written {revision_count} times "
+            f"(max {max_revisions}). Do NOT rewrite it again. "
+            "Record remaining issues with record_conversion_note and proceed to the next file."
+        )
+
+    output_path.write_text(content, encoding="utf-8")
     ctx.deps.converted_files[python_filename] = content
 
     if python_filename not in ctx.deps.revision_history:
@@ -71,7 +85,11 @@ async def write_python_file(
     ctx.deps.revision_history[python_filename].append(content)
 
     revision_num = len(ctx.deps.revision_history[python_filename])
-    return f"Written: {output_path} (revision {revision_num})"
+    remaining = max_revisions - revision_num
+    return (
+        f"Written: {output_path} (revision {revision_num}/{max_revisions}, "
+        f"{remaining} revision(s) remaining)"
+    )
 
 
 async def read_converted_file(
@@ -118,6 +136,21 @@ async def write_requirements_txt(ctx: RunContext[ConversionContext]) -> str:
     output_path = ctx.deps.output_dir / "requirements.txt"
     output_path.write_text(content, encoding="utf-8")
     return f"Written: {output_path} ({len(lines)} packages)"
+
+
+async def get_error_lessons(ctx: RunContext[ConversionContext]) -> str:
+    """Get accumulated error lessons from previously converted files.
+
+    Call this before starting each new file to learn from past mistakes.
+    Returns lessons about errors that were encountered and fixed in earlier files.
+    """
+    if not ctx.deps.error_lessons:
+        return "No error lessons recorded yet."
+
+    lines = ["Error lessons from previous files:"]
+    for i, lesson in enumerate(ctx.deps.error_lessons, 1):
+        lines.append(f"  {i}. {lesson}")
+    return "\n".join(lines)
 
 
 async def record_conversion_note(

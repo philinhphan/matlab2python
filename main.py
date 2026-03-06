@@ -15,8 +15,9 @@ from converter.agent import create_agent
 from converter.context import ConversionContext
 from converter.logging_config import configure_logfire
 from converter.prompts import AGENT_TASK_PROMPT_TEMPLATE
+from converter.workspace import setup_output_workspace
 
-_OPENAI_DEFAULT_MODEL = "gpt-4o-mini"
+_OPENAI_DEFAULT_MODEL = "gpt-5-mini"
 _BMW_DEFAULT_MODEL = "openai/gpt-4o"
 
 
@@ -38,7 +39,7 @@ Examples:
   python main.py testfiles/ -f G_MHS_Berechnung_v03.m G_Emergenz_Auswertung_ANTRIEB_BEV_v07.m
 
   # Use a different model
-  python main.py testfiles/ --model gpt-4o-mini
+  python main.py testfiles/ --model gpt-5-mini
 
   # Use BMW LLM API (reads credentials from .env)
   python main.py testfiles/ --provider bmw
@@ -132,6 +133,12 @@ Examples:
         target_files=args.files or [],
         max_revision_attempts=args.max_revisions,
     )
+
+    # Copy data files to output so converted scripts can find them
+    ws = setup_output_workspace(input_dir, output_dir)
+    ctx.workspace_ready = True
+    print(f"Workspace: copied {ws['files_copied']} data files ({ws['total_size_mb']} MB) to {output_dir}")
+    print()
 
     if args.provider == "bmw":
         import os

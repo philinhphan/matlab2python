@@ -300,7 +300,8 @@ async def annotate_error_in_source(
     """Return source lines around the error location for targeted revision.
 
     Extracts line number from error_message (if present) and returns ±5 lines
-    of context with line numbers for easy identification.
+    of context with line numbers for easy identification. Tracks repeated errors
+    and provides pattern-specific hints.
     """
     content = ctx.deps.converted_files.get(python_filename, "")
     if not content:
@@ -313,28 +314,138 @@ async def annotate_error_in_source(
     lines = content.splitlines()
     total_lines = len(lines)
 
+    # Track this annotation for repeat detection
+    key = python_filename
+    if key not in ctx.deps.error_annotations:
+        ctx.deps.error_annotations[key] = []
+    ctx.deps.error_annotations[key].append(error_message)
+
+    # Count previous occurrences of the same error class
+    repeat_count = sum(
+        1 for prev in ctx.deps.error_annotations[key][:-1]
+        if _same_error_class(prev, error_message)
+    )
+
     # Try to extract line number from error message
     line_num_match = re.search(r"line\s+(\d+)", error_message, re.IGNORECASE)
     if not line_num_match:
         # Return first 20 lines as fallback
         snippet = "\n".join(f"{i+1:4}: {l}" for i, l in enumerate(lines[:20]))
-        return f"Error: {error_message}\n\n(Could not determine line number; showing first 20 lines)\n{snippet}"
+        result = f"Error: {error_message}\n\n(Could not determine line number; showing first 20 lines)\n{snippet}"
+    else:
+        error_line = int(line_num_match.group(1))
+        context_start = max(0, error_line - 6)
+        context_end = min(total_lines, error_line + 5)
 
-    error_line = int(line_num_match.group(1))
-    context_start = max(0, error_line - 6)
-    context_end = min(total_lines, error_line + 5)
+        snippet_lines = []
+        for i in range(context_start, context_end):
+            marker = ">>> " if i + 1 == error_line else "    "
+            snippet_lines.append(f"{marker}{i+1:4}: {lines[i]}")
 
-    snippet_lines = []
-    for i in range(context_start, context_end):
-        marker = ">>> " if i + 1 == error_line else "    "
-        snippet_lines.append(f"{marker}{i+1:4}: {lines[i]}")
+        result = (
+            f"Error: {error_message}\n"
+            f"File: {python_filename}\n"
+            f"Context (lines {context_start+1}–{context_end}):\n"
+            + "\n".join(snippet_lines)
+        )
+        error_line_for_hint = error_line
+    # For hint lookup, use extracted line or None
+    error_line_for_hint = int(line_num_match.group(1)) if line_num_match else None
 
-    return (
-        f"Error: {error_message}\n"
-        f"File: {python_filename}\n"
-        f"Context (lines {context_start+1}–{context_end}):\n"
-        + "\n".join(snippet_lines)
-    )
+    # Append repeat warning if applicable
+    if repeat_count > 0:
+        result += (
+            f"\n\n⚠ REPEATED ERROR (seen {repeat_count + 1} times for this file). "
+            "Your previous rewrite(s) did NOT fix this. "
+            "Try a fundamentally different approach: extract complex expressions "
+            "to variables, use different string quoting, or restructure the logic."
+        )
+
+    # Append pattern-specific hints
+    hint = _get_error_hint(error_message, content, error_line_for_hint)
+    if hint:
+        result += f"\n\n💡 HINT: {hint}"
+
+    # Include lessons from other files if available
+    if ctx.deps.error_lessons:
+        result += "\n\n📝 Lessons from earlier files:\n" + "\n".join(
+            f"  - {lesson}" for lesson in ctx.deps.error_lessons
+        )
+
+    return result
+
+
+def _same_error_class(a: str, b: str) -> bool:
+    """Check if two error messages are the same class (same exception type)."""
+    # Extract the exception type (e.g. "TypeError", "IndexError")
+    pattern = re.compile(r"((?:[A-Z]\w*)?Error|Exception)")
+    types_a = pattern.findall(a)
+    types_b = pattern.findall(b)
+    if not types_a or not types_b:
+        return False
+    return types_a[0] == types_b[0]
+
+
+# Common error patterns: (error_regex, code_regex_or_None, hint_text)
+_ERROR_HINTS: list[tuple[re.Pattern[str], re.Pattern[str] | None, str]] = [
+    (
+        re.compile(r"TypeError.*tuple indices must be integers.*not str", re.IGNORECASE),
+        re.compile(r"""f['"].*\[['"]"""),
+        "This is likely an f-string quoting conflict. `f'...{d[\"key\"]}'` breaks when "
+        "outer and inner quotes clash. Fix: extract the dict lookup to a variable before "
+        "the f-string, e.g. `val = d['key']; print(f'... {val}')`, or use different quotes.",
+    ),
+    (
+        re.compile(r"IndexError.*index.*out of", re.IGNORECASE),
+        None,
+        "Likely a 1-based to 0-based indexing error. MATLAB is 1-based, Python is 0-based. "
+        "Check loop ranges and array indices — subtract 1 from MATLAB indices.",
+    ),
+    (
+        re.compile(r"NameError.*name '(\w+)' is not defined", re.IGNORECASE),
+        None,
+        "Check if this name was supposed to be imported or defined earlier in the file. "
+        "Common causes: missing import, variable defined inside a function but used outside, "
+        "or a MATLAB built-in that needs a Python equivalent.",
+    ),
+    (
+        re.compile(r"KeyError", re.IGNORECASE),
+        None,
+        "Verify the dict key exists. For scipy.io.loadmat, use mat_to_dict() and check "
+        "actual key names — loadmat adds '__header__', '__version__', '__globals__' keys "
+        "and may nest data differently than expected.",
+    ),
+    (
+        re.compile(r"TypeError.*not str", re.IGNORECASE),
+        re.compile(r"""f['"]"""),
+        "Possible f-string quoting conflict. When using dict access inside f-strings, "
+        "extract the value to a variable first: `val = d['key']; f'...{val}...'`.",
+    ),
+]
+
+
+def _get_error_hint(error_message: str, content: str, error_line: int | None) -> str | None:
+    """Check error+code patterns and return the first matching hint, or None."""
+    # Get the error line content if available
+    lines = content.splitlines()
+    line_content = ""
+    if error_line and 0 < error_line <= len(lines):
+        # Check a few lines around the error for context
+        start = max(0, error_line - 3)
+        end = min(len(lines), error_line + 2)
+        line_content = "\n".join(lines[start:end])
+
+    for error_pattern, code_pattern, hint in _ERROR_HINTS:
+        if error_pattern.search(error_message):
+            if code_pattern is None:
+                return hint
+            # Check if code pattern matches in the nearby lines
+            if line_content and code_pattern.search(line_content):
+                return hint
+            # Also check the full content as fallback
+            if code_pattern.search(content):
+                return hint
+    return None
 
 
 def _get_error_context(content: str, error_line: int, context: int = 5) -> str:

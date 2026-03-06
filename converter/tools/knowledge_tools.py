@@ -55,6 +55,11 @@ Saving .mat files:
       'var1': var1, 'var2': var2,  # list all in-scope variables explicitly
   })
 
+  CRITICAL: When MATLAB uses save('file.mat') with NO variable list,
+  it saves ALL workspace variables. You must trace what downstream
+  functions load from this file and include ALL those variables.
+  When in doubt, save every locally-computed variable.
+
 For nested structs:
   MATLAB: save with nested struct field
   Python: scipy.io.savemat('file.mat', {'struct_name': {'field': value}})
@@ -135,18 +140,32 @@ Or use tqdm as context manager:
 """,
 
     "uigetfile": """
-MATLAB uigetfile → Python input() stub:
+MATLAB uigetfile → Python glob-based auto-selection:
   MATLAB:
     [filename, pathname] = uigetfile('*.mat', 'Select file');
     full_path = fullfile(pathname, filename);
 
   Python:
+    import glob
     import os
-    full_path = input('Enter full path to .mat file: ')
+    # CONVERSION NOTE: uigetfile replaced with glob-based auto-selection.
+    # For interactive GUI, use: tkinter.filedialog.askopenfilename()
+    mat_files = sorted(glob.glob('*.mat'))
+    if not mat_files:
+        raise FileNotFoundError('No .mat files found in current directory')
+    full_path = mat_files[0]  # auto-select first match
     pathname, filename = os.path.split(full_path)
 
-  # CONVERSION NOTE: uigetfile replaced with input() stub.
-  # For a proper GUI, use tkinter.filedialog.askopenfilename()
+  When the MATLAB code filters by a specific pattern (e.g. '*MHS*.mat'),
+  use that pattern in the glob call. When context provides a search
+  directory (e.g. from a variable), use os.path.join(search_dir, pattern).
+
+  When uigetfile browses a directory (data in subdirectories),
+  use recursive glob:
+    mat_files = sorted(glob.glob(os.path.join(dir, '**', '*.mat'), recursive=True))
+    # Filter by context (e.g., mic position name) if available
+
+  NEVER use input() — it causes EOFError in non-interactive execution.
 """,
 
     "assignin": """
@@ -162,6 +181,50 @@ MATLAB assignin → remove with comment:
 
 The pattern often appears when trying to set variables in the calling workspace.
 Restructure to use return values or pass mutable containers.
+""",
+
+    "openfig": """
+MATLAB openfig → recreate figure programmatically:
+  MATLAB:
+    hFig = openfig('template.fig');
+    ax = gca;
+    % modify plot...
+
+  Python:
+    import matplotlib.pyplot as plt
+    # CONVERSION NOTE: openfig('template.fig') cannot load MATLAB .fig files.
+    # Recreate the figure programmatically from the MATLAB code context.
+    fig, ax = plt.subplots(subplot_kw={'projection': 'polar'})  # if polar/spider
+    # or: fig, ax = plt.subplots()  # for regular axes
+
+  For spider/radar diagrams (common with openfig):
+    fig, ax = plt.subplots(subplot_kw={'projection': 'polar'})
+    ax.set_theta_zero_location('N')    # 0° at top
+    ax.set_theta_direction(-1)          # clockwise
+    angles = np.linspace(0, 2*np.pi, n_categories, endpoint=False)
+    ax.plot(angles, values)
+    ax.set_thetagrids(np.degrees(angles), category_labels)
+
+  MUST recreate the figure — do NOT just add a comment and skip it.
+""",
+
+    "addpath": """
+MATLAB addpath → remove with comment, use explicit imports:
+  MATLAB:
+    addpath('subfolder')
+    addpath(genpath('libs'))
+
+  Python:
+    # CONVERSION NOTE: addpath('subfolder') removed.
+    # Python uses explicit imports: from module import function
+    # All output files are flat in the output directory and on PYTHONPATH.
+
+  Since all converted .py files land in the same flat output directory,
+  cross-file function calls should use:
+    from other_module import function_name
+
+  Do NOT add sys.path manipulation — the execution environment already
+  sets PYTHONPATH to include the output directory.
 """,
 
     "eval_sprintf": """
@@ -456,9 +519,10 @@ def get_conversion_rule(pattern_name: str) -> str:
     """Return a detailed conversion recipe for a named MATLAB pattern.
 
     Available patterns: dynamic_struct_access, mat_file_load, mat_file_save,
-    1based_indexing, arithmetic_column_index, waitbar, uigetfile, assignin,
-    eval_sprintf, polar_plot, subtightplot, cell_array, string_concat,
-    pyenv_pyrunfile, windows_path, grouped_bar, logical_indexing, colon_operator.
+    1based_indexing, arithmetic_column_index, waitbar, uigetfile, openfig,
+    addpath, assignin, eval_sprintf, polar_plot, subtightplot, cell_array,
+    string_concat, pyenv_pyrunfile, windows_path, grouped_bar,
+    logical_indexing, colon_operator.
     """
     rule = CONVERSION_RULES.get(pattern_name)
     if rule is None:

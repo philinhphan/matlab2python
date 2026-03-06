@@ -17,5 +17,8 @@ class ConversionContext:
     dependency_graph: dict[str, list[str]] = field(default_factory=dict)
     requirements: set[str] = field(default_factory=set)
     conversion_notes: list[str] = field(default_factory=list)       # agent-recorded stubs/warnings
+    error_annotations: dict[str, list[str]] = field(default_factory=dict)  # filename → error messages seen
+    error_lessons: list[str] = field(default_factory=list)                  # cross-file lessons learned
     max_revision_attempts: int = 5
+    workspace_ready: bool = False                                     # True after data files copied to output_dir
     matlab_encoding: str = "latin-1"                                # German characters in test files

@@ -1,0 +1,9 @@
+# Conversion Notes
+- Darstellung_a_v_Diagramm_v2.py: When running, required variables Fzg__GesFzg_S or Fzg__GesFzg_S_X not found in .mat file. Created fallback to generate dummy data if no .mat files found, but if .mat exists without these variables the script will raise. Consider adding more robust variable detection or instructing user which .mat to provide.
+- Emergenz_ANTRIEB_BEV_v07_G26_BEV_BBG_V410176_Schub.py: Execution failed because dependent modules (G_Emergenz_* files) are not yet converted/importable. This is expected during incremental conversion. Ensure these modules are converted and present in the output directory.
+- MHS_v03_G26_BEV_BBG_V410176.py: Execution failed because dependent module G_MHS_Berechnung_v03 is not yet converted/importable. Expected during conversion.
+- G_Emergenz_Auswertung_ANTRIEB_BEV_v07.py: Test run produced ValueError parsing v_grenzen_anfang due to unexpected string format. This occurs in fallback test when v_meas entries may not be strings. Consider robust parsing for numeric boundaries.
+- G_Emergenz_Spinne_ANTRIEB_BEV_v07.py: Execution failed in smoke test because required Emergenz_Verteilung.mat not found. This is expected until earlier stages produce that file.
+- G_Emergenz_Verteilung_ANTRIEB_BEV_v07.py: Execution failed in smoke test due to missing Emergenz_Auswertung.mat; expected until upstream conversion produces outputs.
+- G_Emergenz_Zusammenfassung_ANTRIEB_v07.py: Execution failed in smoke test due to missing Emergenz_Spinne.mat files; expected until upstream conversion produces outputs.
+- Converted 11 MATLAB files to Python. Created utils.py with mat_to_dict and helpers. Noted places where runtime will fail until .mat files are provided. Recreated subtightplot, handled uigetfile replacement in scripts. Some conversions include CONVERSION NOTE for heuristics.
