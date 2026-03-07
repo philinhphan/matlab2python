@@ -12,6 +12,8 @@ from converter.tools.analysis_tools import (
     analyze_matlab_patterns,
     build_dependency_graph,
     extract_function_signatures,
+    inspect_mat_file,
+    list_mat_files,
 )
 from converter.tools.file_tools import (
     get_error_lessons,
@@ -47,6 +49,8 @@ _CONTEXT_TOOLS = [
     analyze_matlab_patterns,
     extract_function_signatures,
     build_dependency_graph,
+    inspect_mat_file,
+    list_mat_files,
     validate_python_syntax,
     run_pyflakes,
     check_numpy_indexing,

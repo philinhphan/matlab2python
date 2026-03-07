@@ -33,6 +33,11 @@ For each MATLAB file:
 4. Call `extract_function_signatures` for all files.
 5. Call `build_dependency_graph` to determine conversion order.
 6. Consult `get_conversion_rule` for any flagged patterns before writing code.
+7. Call `list_mat_files` to see all .mat files in the output directory.
+8. Identify which .mat filenames appear in MATLAB load() calls across ALL source files.
+   Call `inspect_mat_file` ONCE per unique .mat filename. Do NOT inspect .mat files
+   that are never loaded. Do NOT call inspect_mat_file more than once for the same file.
+   CRITICAL — never guess .mat file contents.
 
 ### Phase 2: Per-File Conversion (with validation loop)
 
@@ -147,14 +152,13 @@ data.values = [1 2 3]    → Python: data['values'] = np.array([1, 2, 3])
 
 ## Rule 3: MATLAB load/save
 
-Always include `mat_to_dict()` helper at the top of any file that calls `load()`:
+A robust utils.py is pre-provisioned in the output directory with:
+- mat_to_dict() — recursively converts structs→dicts, cells→lists, scalars→Python types
+- subtightplot() — MATLAB-like subplot with gap/margin control
+- lighten_color() — color lightening utility
 
-```python
-def mat_to_dict(mat):
-    \"\"\"Clean scipy.io.loadmat output: remove metadata, squeeze arrays.\"\"\"
-    return {k: v.squeeze().item() if v.squeeze().ndim == 0 else v.squeeze()
-            for k, v in mat.items() if not k.startswith('__')}
-```
+All files should use: `from utils import mat_to_dict`
+Do NOT create your own utils.py or mat_to_dict — use the pre-provisioned one.
 
 Loading:
 ```matlab
@@ -162,9 +166,12 @@ data = load('file.mat')
 ```
 ```python
 import scipy.io
+from utils import mat_to_dict
 raw = scipy.io.loadmat('file.mat')
 data = mat_to_dict(raw)
 # Access: data['fieldname']  (not data.fieldname!)
+# Structs become dicts: data['Par']['v'] → cleaned Python value
+# Scalars become Python types: data['iGes'] → float
 ```
 
 Saving:
@@ -174,6 +181,47 @@ save('file.mat', 'var1', 'var2')
 ```python
 scipy.io.savemat('file.mat', {'var1': var1, 'var2': var2})
 ```
+
+## Rule 3b: scipy.io.loadmat Behavior (CRITICAL)
+
+scipy.io.loadmat wraps MATLAB types in numpy constructs. The pre-provisioned
+mat_to_dict() in utils.py handles these, but you MUST understand them:
+
+### MATLAB Struct → numpy structured array
+  raw['Par'] → shape=(1,1), dtype with named fields
+  raw['Par'][0,0]['v'] → the 'v' field (still numpy array)
+  After mat_to_dict: data['Par']['v'] → cleaned Python value
+
+### MATLAB Cell Array → numpy object array
+  raw['Mic_Pos_Liste'] → dtype=object, shape=(1,4)
+  After mat_to_dict: data['Mic_Pos_Liste'] → Python list
+
+### MATLAB Scalar → (1,1) array
+  raw['iGes'] → shape=(1,1), dtype=float64
+  After mat_to_dict: data['iGes'] → Python float
+
+### MATLAB Flat Array stored as concatenated pairs
+  MATLAB: v_meas = [[5 15] [15 25] [25 35]] → FLAT (1,6) array
+  After mat_to_dict: shape (6,) — use .reshape(-1, 2) for pairs
+  OR access with arithmetic: v_meas[2*kk-2:2*kk] for 1-based kk
+
+### String extraction
+  After mat_to_dict: string values become Python str
+
+ALWAYS call inspect_mat_file during Phase 1 to verify actual .mat structures.
+NEVER guess variable names or shapes.
+
+### CRITICAL: Struct Numeric Fields Must Be numpy Arrays
+
+When converting MATLAB struct field assignments with numeric values:
+  MATLAB: Par.v_meas = [[5 15] [15 25] ...]   → Python: Par['v_meas'] = np.array([5,15,15,25,...])
+  MATLAB: Par.Abgl_Z = sort([1 2 3 ...])       → Python: Par['Abgl_Z'] = np.sort(np.array([1,2,3,...]))
+
+NEVER use Python lists for numeric arrays. NEVER use sorted() — use np.sort().
+Downstream functions call .squeeze(), do arithmetic, and use numpy indexing on these values.
+Python lists do NOT support these operations.
+
+---
 
 ### CRITICAL: MATLAB `save('file.mat')` without variable list
 
@@ -320,16 +368,12 @@ ax.set_xticks(x_pos)
 ax.legend()
 ```
 
-**subtightplot** — always emit this helper in files that use it:
+**subtightplot** — use the pre-provisioned version from utils.py:
 ```python
-def subtightplot(n_rows, n_cols, idx, gap=(0.1, 0.05), marg_h=(0.1, 0.06), marg_w=(0.05, 0.05)):
-    import matplotlib.gridspec as gridspec
-    gs = gridspec.GridSpec(n_rows, n_cols,
-                           hspace=gap[0], wspace=gap[1],
-                           top=1 - marg_h[0], bottom=marg_h[1],
-                           left=marg_w[0], right=1 - marg_w[1])
-    return plt.subplot(gs[idx - 1])  # MATLAB idx is 1-based
+from utils import subtightplot
+# Then call: ax = subtightplot(n_rows, n_cols, idx, gap, marg_h, marg_w)
 ```
+Do NOT define subtightplot inline — import it from utils.
 
 **openfig** — MUST recreate the figure programmatically (do NOT just add a comment):
 ```matlab
@@ -628,13 +672,16 @@ from pathlib import Path
 from tqdm import tqdm
 ```
 
-### Shared Utilities Module
+### Shared Utilities Module (PRE-PROVISIONED)
 
-Create a `utils.py` file in the output directory containing shared helper functions:
-- `mat_to_dict()` — MUST be in utils.py, not duplicated in every file
-- Any other helpers used by multiple files (e.g., `lighten_color()`, `subtightplot()`)
+A `utils.py` file is automatically provisioned in the output directory with:
+- `mat_to_dict()` — robust recursive conversion of loadmat output
+- `lighten_color()` — color lightening utility
+- `subtightplot()` — MATLAB-like subplot with gap/margin control
 
-All files that need mat_to_dict should use: `from utils import mat_to_dict`
+Do NOT create or overwrite utils.py — it already exists.
+All files that need these should use: `from utils import mat_to_dict, subtightplot, lighten_color`
+You MAY add extra helpers to utils.py via `write_python_file` if needed.
 
 ---
 
@@ -663,10 +710,14 @@ Workspace data: All data files (.mat, .fig, etc.) from the input directory have 
 copied to the output directory preserving the directory structure. Relative paths to
 data files will work from the output directory. FileNotFoundError means a real path bug.
 
-SHARED UTILITIES — CRITICAL:
-Create a utils.py file FIRST, containing mat_to_dict() and any shared helpers.
-All files that load .mat files should use: from utils import mat_to_dict
-Do NOT duplicate mat_to_dict() in every file.
+SHARED UTILITIES — ALREADY PROVIDED:
+A utils.py has been pre-provisioned in the output directory with mat_to_dict(),
+subtightplot(), lighten_color(). Use: from utils import mat_to_dict
+Do NOT recreate utils.py. You MAY add extra helpers to it.
+
+.MAT FILE INSPECTION — CRITICAL:
+Before converting any file that uses load(), call inspect_mat_file on the
+referenced .mat files. NEVER guess .mat file structure — always inspect first.
 
 Your FIRST tool call MUST be list_matlab_files.
 

@@ -170,7 +170,8 @@ Examples:
     print("Starting conversion agent...\n")
     print("=" * 60)
 
-    file_count = max(len(ctx.target_files), 5)
+    actual_m_count = sum(1 for _ in input_dir.rglob("*.m"))
+    file_count = max(len(ctx.target_files), actual_m_count, 5)
     result = await agent.run(
         prompt,
         deps=ctx,

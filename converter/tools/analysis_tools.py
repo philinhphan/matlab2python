@@ -1,9 +1,14 @@
-"""Analysis tools for scanning MATLAB source code patterns."""
+"""Analysis tools for scanning MATLAB source code patterns and data files."""
 
 from __future__ import annotations
 
+import os
 import re
+from pathlib import Path
 from typing import Any
+
+import numpy as np
+import scipy.io
 
 from pydantic_ai import RunContext
 
@@ -195,3 +200,143 @@ def _topological_sort(graph: dict[str, list[str]]) -> list[str]:
         visit(node)
 
     return result
+
+
+def _describe_value(val: Any, max_elements: int = 20) -> str:
+    """Produce a human-readable description of a numpy value from a .mat file."""
+    if not isinstance(val, np.ndarray):
+        return f"  type={type(val).__name__}, value={val!r}"
+
+    lines: list[str] = []
+
+    # Structured array (MATLAB struct)
+    if val.dtype.names is not None:
+        lines.append(f"  MATLAB struct, shape={val.shape}, fields:")
+        squeezed = val.squeeze()
+        if squeezed.ndim == 0:
+            s = squeezed[()]
+            for name in val.dtype.names:
+                field_val = s[name]
+                if isinstance(field_val, np.ndarray):
+                    if field_val.dtype.names:
+                        lines.append(f"    {name}: nested struct, fields={field_val.dtype.names}")
+                    elif field_val.dtype == object:
+                        lines.append(f"    {name}: cell array, shape={field_val.shape}")
+                    elif field_val.dtype.kind in ('U', 'S'):
+                        lines.append(f"    {name}: string = {str(field_val.squeeze())!r}")
+                    elif field_val.size <= max_elements:
+                        lines.append(f"    {name}: shape={field_val.shape}, dtype={field_val.dtype}, values={field_val.squeeze()!r}")
+                    else:
+                        lines.append(f"    {name}: shape={field_val.shape}, dtype={field_val.dtype}")
+                else:
+                    lines.append(f"    {name}: {field_val!r}")
+        return "\n".join(lines)
+
+    # Object array (MATLAB cell)
+    if val.dtype == object:
+        lines.append(f"  cell array, shape={val.shape}")
+        for i, elem in enumerate(val.flat):
+            if i >= 10:
+                lines.append(f"    ... ({val.size - 10} more elements)")
+                break
+            if isinstance(elem, np.ndarray):
+                if elem.dtype.kind in ('U', 'S'):
+                    lines.append(f"    [{i}]: string = {str(elem.squeeze())!r}")
+                elif elem.size <= max_elements:
+                    lines.append(f"    [{i}]: shape={elem.shape}, dtype={elem.dtype}, values={elem.squeeze()!r}")
+                else:
+                    lines.append(f"    [{i}]: shape={elem.shape}, dtype={elem.dtype}")
+            else:
+                lines.append(f"    [{i}]: {elem!r}")
+        return "\n".join(lines)
+
+    # String array
+    if val.dtype.kind in ('U', 'S'):
+        return f"  string, value={str(val.squeeze())!r}"
+
+    # Numeric array
+    if val.size <= max_elements:
+        return f"  shape={val.shape}, dtype={val.dtype}, values={val.squeeze()!r}"
+    return f"  shape={val.shape}, dtype={val.dtype}"
+
+
+async def inspect_mat_file(
+    ctx: RunContext[ConversionContext],
+    file_path: str,
+) -> str:
+    """Load a .mat file and return a structured overview of its contents.
+
+    Shows variable names, shapes, types, struct fields, and small values.
+    Looks in output_dir first (workspace-copied), then input_dir as fallback.
+    """
+    # Resolve file path: try output_dir first, then input_dir
+    candidates = [
+        ctx.deps.output_dir / file_path,
+        ctx.deps.input_dir / file_path,
+    ]
+    # Also search recursively if just a filename was given
+    if "/" not in file_path and "\\" not in file_path:
+        for search_dir in [ctx.deps.output_dir, ctx.deps.input_dir]:
+            for root, _dirs, files in os.walk(search_dir):
+                if file_path in files:
+                    candidates.append(Path(root) / file_path)
+
+    resolved = None
+    for c in candidates:
+        if c.is_file():
+            resolved = c
+            break
+
+    if resolved is None:
+        return f"ERROR: Could not find '{file_path}' in output or input directory."
+
+    try:
+        mat = scipy.io.loadmat(str(resolved), squeeze_me=False)
+    except Exception as e:
+        return f"ERROR loading '{resolved}': {e}"
+
+    lines = [f"=== {file_path} (from {resolved.relative_to(ctx.deps.input_dir.parent)}) ==="]
+    lines.append(f"Total variables: {sum(1 for k in mat if not k.startswith('__'))}")
+    lines.append("")
+
+    for key in sorted(mat.keys()):
+        if key.startswith("__"):
+            continue
+        val = mat[key]
+        lines.append(f"{key}:")
+        lines.append(_describe_value(val))
+        lines.append("")
+
+    return "\n".join(lines)
+
+
+async def list_mat_files(
+    ctx: RunContext[ConversionContext],
+    directory: str = "",
+) -> str:
+    """List all .mat files in the output directory (or a subdirectory), with sizes.
+
+    Helps the agent discover what data files are available for inspection.
+    """
+    search_dir = ctx.deps.output_dir / directory if directory else ctx.deps.output_dir
+    if not search_dir.is_dir():
+        # Fallback to input dir
+        search_dir = ctx.deps.input_dir / directory if directory else ctx.deps.input_dir
+
+    if not search_dir.is_dir():
+        return f"ERROR: Directory '{directory}' not found."
+
+    mat_files: list[str] = []
+    for root, _dirs, files in os.walk(search_dir):
+        for f in sorted(files):
+            if f.lower().endswith(".mat"):
+                full = Path(root) / f
+                rel = full.relative_to(search_dir)
+                size_kb = full.stat().st_size / 1024
+                mat_files.append(f"  {rel}  ({size_kb:.1f} KB)")
+
+    if not mat_files:
+        return f"No .mat files found in '{search_dir}'."
+
+    header = f"=== .mat files in {search_dir.name}/{directory} ==="
+    return header + "\n" + "\n".join(mat_files) + f"\n\nTotal: {len(mat_files)} files"

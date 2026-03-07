@@ -1,22 +1,70 @@
 """Shared helpers emitted into every converted file that uses load() or special MATLAB functions."""
 
+import numpy as np
+
+
+def _convert_value(val):
+    """Recursively convert a numpy value from scipy.io.loadmat to a Python type."""
+    if not isinstance(val, np.ndarray):
+        return val
+
+    # Structured array (MATLAB struct) → nested dict
+    if val.dtype.names is not None:
+        return _struct_to_dict(val)
+
+    # Object array (MATLAB cell array) → Python list
+    if val.dtype == object:
+        return _cell_to_list(val)
+
+    # String array → Python str
+    if val.dtype.kind == 'U' or val.dtype.kind == 'S':
+        squeezed = val.squeeze()
+        if squeezed.ndim == 0:
+            return str(squeezed)
+        return str(squeezed)
+
+    # Numeric scalar (1,1) → Python int/float
+    squeezed = val.squeeze()
+    if squeezed.ndim == 0:
+        return squeezed.item()
+
+    return squeezed
+
+
+def _struct_to_dict(arr):
+    """Convert a MATLAB struct (numpy structured array) to a nested Python dict."""
+    squeezed = arr.squeeze()
+    if squeezed.ndim == 0:
+        # Single struct: extract each named field
+        s = squeezed[()]
+        return {name: _convert_value(s[name]) for name in arr.dtype.names}
+    else:
+        # Array of structs: convert each element
+        result = []
+        for item in squeezed.flat:
+            result.append({name: _convert_value(item[name]) for name in arr.dtype.names})
+        return result
+
+
+def _cell_to_list(arr):
+    """Convert a MATLAB cell array (numpy object array) to a Python list."""
+    result = [_convert_value(elem) for elem in arr.flat]
+    # Unwrap single-element list
+    if len(result) == 1:
+        return result[0]
+    return result
+
 
 def mat_to_dict(mat):
-    """Clean scipy.io.loadmat output: remove metadata, squeeze arrays.
+    """Clean scipy.io.loadmat output: remove metadata, recursively convert types.
 
-    scipy.io.loadmat wraps everything in extra dimensions and adds __header__,
-    __version__, __globals__ keys. This function strips those and squeezes
-    single-element arrays to scalars.
+    Handles MATLAB structs → dicts, cell arrays → lists, scalars → Python types.
     """
     result = {}
     for k, v in mat.items():
         if k.startswith('__'):
             continue
-        squeezed = v.squeeze()
-        if squeezed.ndim == 0:
-            result[k] = squeezed.item()
-        else:
-            result[k] = squeezed
+        result[k] = _convert_value(v)
     return result
 
 
