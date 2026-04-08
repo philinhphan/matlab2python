@@ -158,7 +158,7 @@ Examples:
     if args.trace:
         configure_logfire(service_name="matlab2python", openai_client=client)
     provider = OpenAIProvider(openai_client=client)
-    agent = create_agent(model=model_name, provider=provider)
+    agent = create_agent(model=model_name, provider=provider, provider_name=args.provider)
 
     prompt = AGENT_TASK_PROMPT_TEMPLATE.format(
         input_dir=ctx.input_dir,

@@ -37,6 +37,7 @@ from converter.tools.validation_tools import (
     validate_python_syntax,
 )
 from converter.tools.execution_tools import execute_python_file
+from converter.tools.matlab_engine_tools import execute_matlab_file
 
 _CONTEXT_TOOLS = [
     list_matlab_files,
@@ -69,6 +70,7 @@ _PLAIN_TOOLS = [
 def create_agent(
     model: str = "gpt-5-mini",
     provider: OpenAIProvider | None = None,
+    provider_name: str = "openai",
 ) -> Agent[ConversionContext, str]:
     """Create and return the conversion agent with all tools registered.
 
@@ -94,4 +96,9 @@ def create_agent(
         a.tool(_tool)
     for _plain_tool in _PLAIN_TOOLS:
         a.tool_plain(_plain_tool)
+
+    # MATLAB Engine tool — only available with BMW provider (requires MATLAB license)
+    if provider_name == "bmw":
+        a.tool(execute_matlab_file)
+
     return a
