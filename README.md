@@ -60,7 +60,7 @@ python main.py testfiles/ --max-revisions 8
 Add the BMW credentials to your `.env` (see [BMW Setup](#bmw-setup) below), then:
 
 ```bash
-# Default model: openai/gpt-4o
+# Default model: openai/gpt-5-mini
 python main.py testfiles/ --provider bmw
 
 # Use a specific model
@@ -218,7 +218,8 @@ The BMW CA certificate (`BMW_Trusted_Certificates_Latest.pem`) is downloaded aut
 
 | Model ID | Notes |
 |---|---|
-| `openai/gpt-4o` | Default for `--provider bmw` |
+| `openai/gpt-5-mini` | Default for `--provider bmw` |
+| `openai/gpt-4o` | High capability model |
 | `openai/gpt-4o-mini` | Faster / cheaper |
 | `openai/o3-mini` | Reasoning model |
 | `anthropic/claude-3-7-sonnet` | Anthropic via BMW gateway |

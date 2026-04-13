@@ -18,7 +18,7 @@ from converter.prompts import AGENT_TASK_PROMPT_TEMPLATE
 from converter.workspace import setup_output_workspace
 
 _OPENAI_DEFAULT_MODEL = "gpt-5-mini"
-_BMW_DEFAULT_MODEL = "openai/gpt-4o"
+_BMW_DEFAULT_MODEL = "openai/gpt-5-mini"
 
 
 async def main() -> None:
