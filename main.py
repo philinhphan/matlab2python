@@ -153,7 +153,14 @@ Examples:
         )
         model_name = model_arg  # e.g. "openai/gpt-4o" — no prefix stripping needed
     else:
-        client = AsyncOpenAI(max_retries=5)
+        import httpx as _httpx
+        from converter.bmw_auth import _sanitize_null_content
+        client = AsyncOpenAI(
+            max_retries=5,
+            http_client=_httpx.AsyncClient(
+                event_hooks={"request": [_sanitize_null_content]},
+            ),
+        )
         model_name = model_arg.removeprefix("openai:")
 
     if args.trace:
