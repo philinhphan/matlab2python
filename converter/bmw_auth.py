@@ -1,6 +1,7 @@
 """BMW LLM API authentication helpers."""
 from __future__ import annotations
 
+import json
 import os
 from datetime import datetime, timezone
 
@@ -68,6 +69,31 @@ def _is_token_valid(token: str | None, exp_str: str | None) -> bool:
         return False
 
 
+async def _sanitize_null_content(request: httpx.Request) -> None:
+    """Replace null content values with empty strings in chat messages.
+
+    BMW's LLM API gateway rejects content: null in assistant messages
+    (valid per OpenAI spec for tool-call-only messages, but BMW is stricter).
+    """
+    if request.content:
+        try:
+            body = json.loads(request.content)
+        except (json.JSONDecodeError, UnicodeDecodeError):
+            return
+        messages = body.get("messages")
+        if not messages:
+            return
+        changed = False
+        for msg in messages:
+            if msg.get("content") is None:
+                msg["content"] = ""
+                changed = True
+        if changed:
+            new_body = json.dumps(body).encode("utf-8")
+            request._content = new_body
+            request.headers["content-length"] = str(len(new_body))
+
+
 def create_bmw_openai_client(
     api_key: str,
     client_id: str,
@@ -98,5 +124,6 @@ def create_bmw_openai_client(
         http_client=httpx.AsyncClient(
             headers={"x-apikey": api_key},
             verify=cert_path,
+            event_hooks={"request": [_sanitize_null_content]},
         ),
     )
