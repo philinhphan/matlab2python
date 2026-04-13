@@ -91,6 +91,7 @@ async def _sanitize_null_content(request: httpx.Request) -> None:
         if changed:
             new_body = json.dumps(body).encode("utf-8")
             request._content = new_body
+            request.stream = httpx.ByteStream(new_body)
             request.headers["content-length"] = str(len(new_body))
 
 
