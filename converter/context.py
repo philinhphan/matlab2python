@@ -23,3 +23,4 @@ class ConversionContext:
     max_revision_attempts: int = 5
     workspace_ready: bool = False                                     # True after data files copied to output_dir
     matlab_encoding: str = "latin-1"                                # German characters in test files
+    provider_name: str = "openai"                                    # "openai" or "bmw"

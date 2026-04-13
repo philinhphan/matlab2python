@@ -720,9 +720,10 @@ Before converting any file that uses load(), call inspect_mat_file on the
 referenced .mat files. NEVER guess .mat file structure — always inspect first.
 
 Your FIRST tool call MUST be list_matlab_files.
-
+{matlab_engine_instruction}
 For each .m file discovered:
 1. Call read_matlab_file to read the source.
+1b. {matlab_engine_step}
 2. Call analyze_matlab_patterns on the file content.
 3. Call get_conversion_rule for any flagged patterns before writing.
 3b. If this is not the first file, call `get_error_lessons` to review mistakes

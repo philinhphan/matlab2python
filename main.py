@@ -132,6 +132,7 @@ Examples:
         output_dir=output_dir,
         target_files=args.files or [],
         max_revision_attempts=args.max_revisions,
+        provider_name=args.provider,
     )
 
     # Copy data files to output so converted scripts can find them
@@ -160,11 +161,28 @@ Examples:
     provider = OpenAIProvider(openai_client=client)
     agent = create_agent(model=model_name, provider=provider, provider_name=args.provider)
 
+    if args.provider == "bmw":
+        matlab_engine_instruction = (
+            "\nMATLAB ENGINE — MANDATORY (BMW provider):\n"
+            "A MATLAB license is available. You MUST call execute_matlab_file on every\n"
+            ".m file BEFORE converting it. This gives you reference output to validate\n"
+            "the converted Python against. Do this as step 1b below.\n"
+        )
+        matlab_engine_step = (
+            "Call execute_matlab_file on this .m file to capture reference MATLAB output. "
+            "This step is MANDATORY — do not skip it."
+        )
+    else:
+        matlab_engine_instruction = ""
+        matlab_engine_step = "Skip (MATLAB Engine not available with this provider)."
+
     prompt = AGENT_TASK_PROMPT_TEMPLATE.format(
         input_dir=ctx.input_dir,
         output_dir=ctx.output_dir,
         file_list=", ".join(ctx.target_files) if ctx.target_files else "all .m files",
         max_attempts=ctx.max_revision_attempts,
+        matlab_engine_instruction=matlab_engine_instruction,
+        matlab_engine_step=matlab_engine_step,
     )
 
     print("Starting conversion agent...\n")
