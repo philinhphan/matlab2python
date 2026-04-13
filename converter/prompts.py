@@ -741,6 +741,11 @@ For each .m file discovered:
    - If it fails with a runtime error: fix the code, rewrite, re-run static checks (steps 5-7)
      and execute_python_file again — but ONLY on the file you just fixed, NOT all files.
    - Do NOT re-execute files that already passed.
+   - If the result contains "matlab_reference_output", compare Python stdout against
+     the MATLAB reference. Look for: (a) matching numeric values (allow floating-point
+     differences < 1e-6), (b) same number of output lines, (c) same structural format.
+     If outputs diverge significantly, fix the Python code and re-run.
+     Minor formatting differences (whitespace, decimal places) are acceptable.
 10. Call record_conversion_note for any stubs or warnings.
 
 Every .m file MUST result in a write_python_file call. Do NOT skip any file.

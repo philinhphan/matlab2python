@@ -167,6 +167,8 @@ Examples:
             "A MATLAB license is available. You MUST call execute_matlab_file on every\n"
             ".m file BEFORE converting it. This gives you reference output to validate\n"
             "the converted Python against. Do this as step 1b below.\n"
+            "After Python execution succeeds, the result will include the MATLAB reference\n"
+            "output. Compare them and fix any significant discrepancies.\n"
         )
         matlab_engine_step = (
             "Call execute_matlab_file on this .m file to capture reference MATLAB output. "

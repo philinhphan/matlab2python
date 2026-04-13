@@ -233,6 +233,35 @@ async def execute_python_file(
             if lesson:
                 ctx.deps.error_lessons.append(lesson)
 
+    # Cache Python stdout in context (parallel to matlab_outputs caching)
+    if result.get("stdout"):
+        ctx.deps.python_outputs[python_filename] = result["stdout"]
+
+    # Save Python output to disk
+    stem = Path(python_filename).stem
+    output_file = ctx.deps.output_dir / f"{stem}_python_output.txt"
+    content_parts = []
+    if result.get("stdout"):
+        content_parts.append(result["stdout"])
+    if result.get("stderr") and not result["success"]:
+        content_parts.append(f"\n--- STDERR ---\n{result['stderr']}")
+    if content_parts:
+        output_file.write_text("".join(content_parts), encoding="utf-8")
+        result["output_file"] = str(output_file)
+
+    # Attach MATLAB reference output when available (BMW provider only)
+    matlab_filename = stem + ".m"
+    matlab_ref = ctx.deps.matlab_outputs.get(matlab_filename, "")
+    if matlab_ref and result["success"]:
+        result["matlab_reference_output"] = _truncate_output(matlab_ref.encode(), max_bytes=4096)
+        comparison_file = ctx.deps.output_dir / f"{stem}_comparison.txt"
+        comparison_file.write_text(
+            f"=== MATLAB Output ({matlab_filename}) ===\n{matlab_ref}\n\n"
+            f"=== Python Output ({python_filename}) ===\n{result.get('stdout', '')}\n",
+            encoding="utf-8",
+        )
+        result["comparison_file"] = str(comparison_file)
+
     _log_execution_result(python_filename, result)
     return result
 
